@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>粒子聚合为四面图片立方体</title>
+  <title>粒子聚合为六面图片立方体</title>
   <style>
     html, body {
       margin: 0;
@@ -72,14 +72,14 @@
     // =========================
     // 可调参数
     // =========================
-    const IMAGE_PATH = "./ddz.jpg";   // 改成你的图片路径，比如 ./ddz.jpg
-    const PARTICLE_COUNT = 24000;     // 粒子数量，已经明显提高
-    const SAMPLE_STEP = 2;            // 图片采样步长，越小越清晰，但更吃性能
-    const IMAGE_MAX_SIZE = 180;       // 采样分辨率，越大越清晰
-    const CUBE_SIZE = 18;             // 立方体大小
- 
-    const ROTATE_SPEED_Y = 0.012;      //绕着y轴转
-    #const ROTATE_SPEED_X = 0.003;     //绕着x轴转
+    const IMAGE_PATH = "./ddz.png";   // 改成你的图片路径，比如 ./ddz.jpg
+    const PARTICLE_COUNT = 30000;     // 粒子总数，越大越清晰，但更吃性能
+    const SAMPLE_STEP = 1;            // 图片采样步长，1 最清晰，2 更省性能
+    const IMAGE_MAX_SIZE = 220;       // 采样图片内部尺寸
+    const CUBE_SIZE = 18;             // 立方体边长
+
+    // 现在只绕一个轴转：Y 轴
+    const ROTATE_SPEED_Y = 0.006;
 
     const SCATTER_RANGE = { x: 130, y: 90, z: 70 };
 
@@ -123,7 +123,7 @@
       );
       gradient.addColorStop(0.0, "rgba(255,255,255,1)");
       gradient.addColorStop(0.18, "rgba(255,255,255,0.95)");
-      gradient.addColorStop(0.45, "rgba(255,255,255,0.55)");
+      gradient.addColorStop(0.45, "rgba(255,255,255,0.58)");
       gradient.addColorStop(1.0, "rgba(255,255,255,0)");
 
       ctx.clearRect(0, 0, size, size);
@@ -176,7 +176,7 @@
     geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
 
     const material = new THREE.PointsMaterial({
-      size: 0.34,
+      size: 0.30,
       map: particleSprite,
       transparent: true,
       opacity: 0.96,
@@ -226,14 +226,13 @@
     }
 
     // =========================
-    // 构建四个侧面的图片粒子目标点
-    // 前 / 后 / 左 / 右 四面都是图片
+    // 构建六个侧面的图片粒子目标点
+    // 前 / 后 / 左 / 右 / 上 / 下 六面都是图片
     // =========================
     function buildCubeImageCandidates(imgData) {
       const candidates = [];
       const half = CUBE_SIZE / 2;
 
-      // 保持图片比例，放进正方形侧面里
       const aspect = imgData.width / imgData.height;
       let drawW, drawH;
 
@@ -253,13 +252,13 @@
           const b = imgData.data[idx + 2] / 255;
           const a = imgData.data[idx + 3];
 
-          // PNG 透明背景时，透明像素不参与
           if (a < 20) continue;
 
+          // 图片在一个面上的局部坐标
           const localX = (x / (imgData.width - 1) - 0.5) * drawW;
           const localY = (0.5 - y / (imgData.height - 1)) * drawH;
 
-          // 前面
+          // 前面  z = +half
           candidates.push({
             x: localX,
             y: localY,
@@ -267,7 +266,7 @@
             r, g, b
           });
 
-          // 后面（镜像一下，外侧看方向更自然）
+          // 后面  z = -half（镜像）
           candidates.push({
             x: -localX,
             y: localY,
@@ -275,7 +274,7 @@
             r, g, b
           });
 
-          // 左面
+          // 左面  x = -half
           candidates.push({
             x: -half,
             y: localY,
@@ -283,11 +282,27 @@
             r, g, b
           });
 
-          // 右面
+          // 右面  x = +half
           candidates.push({
             x: half,
             y: localY,
             z: localX,
+            r, g, b
+          });
+
+          // 上面  y = +half
+          candidates.push({
+            x: localX,
+            y: half,
+            z: -localY,
+            r, g, b
+          });
+
+          // 下面  y = -half
+          candidates.push({
+            x: localX,
+            y: -half,
+            z: localY,
             r, g, b
           });
         }
@@ -313,7 +328,6 @@
         return;
       }
 
-      // 为了分布更均匀，不是纯随机，而是按比例抽样
       for (let i = 0; i < PARTICLE_COUNT; i++) {
         const i3 = i * 3;
         const idx = Math.floor(i * candidates.length / PARTICLE_COUNT);
@@ -375,11 +389,11 @@
 
       gatherFactor += (targetGatherFactor - gatherFactor) * 0.06;
 
-      // 聚合时稍微把粒子缩小一点，图片更清楚
-      material.size = 0.44 - gatherFactor * 0.16;
+      // 聚合时粒子更小，画面更清楚
+      material.size = 0.34 - gatherFactor * 0.16;
 
+      // 只绕 Y 轴旋转
       particles.rotation.y += ROTATE_SPEED_Y;
-      particles.rotation.x += ROTATE_SPEED_X;
 
       const posAttr = geometry.attributes.position;
       const colorAttr = geometry.attributes.color;
