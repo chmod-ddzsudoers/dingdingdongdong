@@ -92,8 +92,8 @@
       ctx.textBaseline = "middle";
 
       // 中文字体优先
-      const fontSize = 145;
-      const lineHeight = 175;
+      const fontSize = 120;
+      const lineHeight = 150;
       ctx.font = `bold ${fontSize}px "Microsoft YaHei", "PingFang SC", "Noto Sans SC", sans-serif`;
 
       // 让多行文字整体在画布中垂直居中
@@ -146,7 +146,7 @@
 
     const material = new THREE.PointsMaterial({
       color: 0xff69b4,
-      size: 0.5,
+      size: 0.3,
       transparent: true,
       opacity: 0.86,
       blending: THREE.AdditiveBlending,
@@ -181,7 +181,7 @@
       requestAnimationFrame(animate);
 
       // 沿单一轴旋转，避免太乱
-      particles.rotation.y += 0.008;
+      particles.rotation.y += 0.007;
 
       gatherFactor += (targetGatherFactor - gatherFactor) * 0.05;
 
