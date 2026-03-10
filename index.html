@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>点击控制 DDZ 粒子</title>
+  <title>按下聚合 DDZ 粒子</title>
   <style>
     body {
       margin: 0;
@@ -43,17 +43,14 @@
     }
   </style>
 
-  <!-- Three.js -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 </head>
 <body>
-  <div id="hint">点击屏幕：聚合 / 散开</div>
+  <div id="hint">按下屏幕：聚合 ｜ 松开：散开</div>
   <div id="canvas-container"></div>
 
   <script>
-    // =========================
     // 1. Three.js 场景初始化
-    // =========================
     const scene = new THREE.Scene();
 
     const camera = new THREE.PerspectiveCamera(
@@ -72,9 +69,7 @@
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     document.getElementById("canvas-container").appendChild(renderer.domElement);
 
-    // =========================
     // 2. 创建 DDZ 粒子系统
-    // =========================
     const particleCount = 3000;
     const geometry = new THREE.BufferGeometry();
 
@@ -122,17 +117,14 @@
     for (let i = 0; i < particleCount; i++) {
       const p = textPoints[Math.floor(Math.random() * textPoints.length)];
 
-      // DDZ 目标位置
       targetPositions[i * 3] = p.x;
       targetPositions[i * 3 + 1] = p.y;
       targetPositions[i * 3 + 2] = (Math.random() - 0.5) * 2.5;
 
-      // 散开随机位置
       randomPositions[i * 3] = (Math.random() - 0.5) * 100;
       randomPositions[i * 3 + 1] = (Math.random() - 0.5) * 60;
       randomPositions[i * 3 + 2] = (Math.random() - 0.5) * 50;
 
-      // 初始状态：散开
       positions[i * 3] = randomPositions[i * 3];
       positions[i * 3 + 1] = randomPositions[i * 3 + 1];
       positions[i * 3 + 2] = randomPositions[i * 3 + 2];
@@ -152,30 +144,33 @@
     const particles = new THREE.Points(geometry, material);
     scene.add(particles);
 
-    // =========================
-    // 3. 点击交互逻辑
-    // =========================
-    let gatherFactor = 0;       // 当前聚合程度
-    let targetGatherFactor = 0; // 目标聚合程度
-    let isGathered = false;     // 当前是否聚合成 DDZ
+    // 3. 按下聚合 / 松开散开
+    let gatherFactor = 0;
+    let targetGatherFactor = 0;
 
-    function toggleParticles() {
-      isGathered = !isGathered;
-      targetGatherFactor = isGathered ? 1 : 0;
+    function pressStart() {
+      targetGatherFactor = 1;
     }
 
-    window.addEventListener("click", toggleParticles);
-    window.addEventListener("touchstart", toggleParticles, { passive: true });
+    function pressEnd() {
+      targetGatherFactor = 0;
+    }
 
-    // =========================
+    window.addEventListener("mousedown", pressStart);
+    window.addEventListener("mouseup", pressEnd);
+    window.addEventListener("mouseleave", pressEnd);
+
+    window.addEventListener("touchstart", pressStart, { passive: true });
+    window.addEventListener("touchend", pressEnd, { passive: true });
+    window.addEventListener("touchcancel", pressEnd, { passive: true });
+
     // 4. 动画循环
-    // =========================
     function animate() {
       requestAnimationFrame(animate);
 
-      particles.rotation.y += 0.002;
+      // 循环速度
+      particles.rotation.y += 0.008;
 
-      // 平滑过渡
       gatherFactor += (targetGatherFactor - gatherFactor) * 0.05;
 
       const posAttr = particles.geometry.attributes.position;
@@ -205,9 +200,7 @@
 
     animate();
 
-    // =========================
     // 5. 自适应窗口
-    // =========================
     window.addEventListener("resize", () => {
       camera.aspect = window.innerWidth / window.innerHeight;
       camera.updateProjectionMatrix();
