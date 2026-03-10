@@ -71,7 +71,7 @@
     // 可调参数
     // =========================
     const CONFIG = {
-      particleCount: 5000,     // 粒子数量，越大越清楚，越吃性能
+      particleCount: 8000,     // 粒子数量，越大越清楚，越吃性能
       sampleStep: 2,           // 文字采样步长，越小越密，越清楚
       pointSize: 0.2,         // 单个粒子大小
       pointOpacity: 0.86,      // 粒子透明度
@@ -171,7 +171,7 @@
         }
 
         TEXT_GROUPS = validGroups;
-        setStatus(`已加载 ${TEXT_GROUPS.length} 组文案`);
+       #setStatus(`已加载 ${TEXT_GROUPS.length} 组文案`);
       } catch (error) {
         console.error(error);
 
@@ -204,13 +204,13 @@
     function getLayoutForLines(lineCount) {
       // 1/2/3 行分别优化；超过 3 行也会继续缩小并整体居中
       if (lineCount <= 1) {
-        return { fontSize: 170, lineHeight: 200 };
+        return { fontSize: 100, lineHeight: 120 };
       }
       if (lineCount === 2) {
-        return { fontSize: 145, lineHeight: 175 };
+        return { fontSize: 100, lineHeight: 120 };
       }
       if (lineCount === 3) {
-        return { fontSize: 115, lineHeight: 140 };
+        return { fontSize: 100, lineHeight: 120 };
       }
 
       // 4 行及以上，继续缩小
