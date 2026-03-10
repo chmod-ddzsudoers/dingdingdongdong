@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>粒子聚合为照片 / 立方体</title>
+  <title>粒子聚合为四面图片立方体</title>
   <style>
     html, body {
       margin: 0;
@@ -65,32 +65,23 @@
 </head>
 <body>
   <div id="loading">正在加载图片与粒子...</div>
-  <div id="hint">按下：聚合 ｜ 松开：散开</div>
+  <div id="hint">按下：聚合成立方体 ｜ 松开：散开为粒子</div>
   <div id="canvas-container"></div>
 
   <script>
     // =========================
     // 可调参数
     // =========================
+    const IMAGE_PATH = "./ddz.jpg";   // 改成你的图片路径，比如 ./ddz.jpg
+    const PARTICLE_COUNT = 24000;     // 粒子数量，已经明显提高
+    const SAMPLE_STEP = 2;            // 图片采样步长，越小越清晰，但更吃性能
+    const IMAGE_MAX_SIZE = 180;       // 采样分辨率，越大越清晰
+    const CUBE_SIZE = 18;             // 立方体大小
 
-    // "plane" = 粒子聚合为一张照片
-    // "cube"  = 粒子聚合为一个立方体，前后两面是照片
-    const SHAPE_MODE = "cube";
-
-    // 图片路径：png / jpg 都可以
-    const IMAGE_PATH = "./ddz.jpg";
-
-    const PARTICLE_COUNT = 5000;
-    const ROTATE_SPEED_Y = 0.012;  // 旋转更快一点
+    const ROTATE_SPEED_Y = 0.012;
     const ROTATE_SPEED_X = 0.003;
 
     const SCATTER_RANGE = { x: 130, y: 90, z: 70 };
-
-    // plane 模式参数
-    const PLANE_HEIGHT = 18;
-
-    // cube 模式参数
-    const CUBE_SIZE = 18;
 
     // =========================
     // 基础场景
@@ -117,7 +108,7 @@
     container.appendChild(renderer.domElement);
 
     // =========================
-    // 粒子贴图：让粒子看起来像发光圆点
+    // 发光粒子贴图
     // =========================
     function createParticleSprite() {
       const size = 128;
@@ -131,10 +122,11 @@
         size / 2, size / 2, size / 2
       );
       gradient.addColorStop(0.0, "rgba(255,255,255,1)");
-      gradient.addColorStop(0.2, "rgba(255,255,255,0.95)");
-      gradient.addColorStop(0.5, "rgba(255,255,255,0.45)");
+      gradient.addColorStop(0.18, "rgba(255,255,255,0.95)");
+      gradient.addColorStop(0.45, "rgba(255,255,255,0.55)");
       gradient.addColorStop(1.0, "rgba(255,255,255,0)");
 
+      ctx.clearRect(0, 0, size, size);
       ctx.fillStyle = gradient;
       ctx.fillRect(0, 0, size, size);
 
@@ -162,20 +154,20 @@
     for (let i = 0; i < PARTICLE_COUNT; i++) {
       const i3 = i * 3;
 
-      randomPositions[i3]     = (Math.random() - 0.5) * SCATTER_RANGE.x;
+      randomPositions[i3] = (Math.random() - 0.5) * SCATTER_RANGE.x;
       randomPositions[i3 + 1] = (Math.random() - 0.5) * SCATTER_RANGE.y;
       randomPositions[i3 + 2] = (Math.random() - 0.5) * SCATTER_RANGE.z;
 
-      positions[i3]     = randomPositions[i3];
+      positions[i3] = randomPositions[i3];
       positions[i3 + 1] = randomPositions[i3 + 1];
       positions[i3 + 2] = randomPositions[i3 + 2];
 
       // 散开时颜色：粉白
-      scatterColors[i3]     = 1.0;
-      scatterColors[i3 + 1] = 0.55 + Math.random() * 0.20;
-      scatterColors[i3 + 2] = 0.75 + Math.random() * 0.20;
+      scatterColors[i3] = 1.0;
+      scatterColors[i3 + 1] = 0.58 + Math.random() * 0.18;
+      scatterColors[i3 + 2] = 0.78 + Math.random() * 0.18;
 
-      colors[i3]     = scatterColors[i3];
+      colors[i3] = scatterColors[i3];
       colors[i3 + 1] = scatterColors[i3 + 1];
       colors[i3 + 2] = scatterColors[i3 + 2];
     }
@@ -184,10 +176,10 @@
     geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
 
     const material = new THREE.PointsMaterial({
-      size: 0.65,
+      size: 0.34,
       map: particleSprite,
       transparent: true,
-      opacity: 0.95,
+      opacity: 0.96,
       vertexColors: true,
       depthWrite: false,
       blending: THREE.NormalBlending
@@ -204,7 +196,7 @@
     let ready = false;
 
     // =========================
-    // 图片加载
+    // 加载图片
     // =========================
     function loadImage(src) {
       return new Promise((resolve, reject) => {
@@ -215,8 +207,8 @@
       });
     }
 
-    function buildImageData(img, maxWidth = 500) {
-      const scale = Math.min(1, maxWidth / img.width);
+    function buildImageData(img) {
+      const scale = Math.min(1, IMAGE_MAX_SIZE / img.width);
       const canvas = document.createElement("canvas");
       canvas.width = Math.max(1, Math.floor(img.width * scale));
       canvas.height = Math.max(1, Math.floor(img.height * scale));
@@ -233,63 +225,87 @@
       };
     }
 
-    function sampleColor(imgData, u, v) {
-      u = Math.min(1, Math.max(0, u));
-      v = Math.min(1, Math.max(0, v));
-
-      const x = Math.min(imgData.width - 1, Math.floor(u * (imgData.width - 1)));
-      const y = Math.min(imgData.height - 1, Math.floor(v * (imgData.height - 1)));
-      const idx = (y * imgData.width + x) * 4;
-
-      return {
-        r: imgData.data[idx] / 255,
-        g: imgData.data[idx + 1] / 255,
-        b: imgData.data[idx + 2] / 255,
-        a: imgData.data[idx + 3] / 255
-      };
-    }
-
-    function buildPlaneTargets(imgData) {
-      const aspect = imgData.width / imgData.height;
-      const planeHeight = PLANE_HEIGHT;
-      const planeWidth = planeHeight * aspect;
-
+    // =========================
+    // 构建四个侧面的图片粒子目标点
+    // 前 / 后 / 左 / 右 四面都是图片
+    // =========================
+    function buildCubeImageCandidates(imgData) {
       const candidates = [];
-      const step = 2;
+      const half = CUBE_SIZE / 2;
 
-      for (let y = 0; y < imgData.height; y += step) {
-        for (let x = 0; x < imgData.width; x += step) {
+      // 保持图片比例，放进正方形侧面里
+      const aspect = imgData.width / imgData.height;
+      let drawW, drawH;
+
+      if (aspect >= 1) {
+        drawW = CUBE_SIZE;
+        drawH = CUBE_SIZE / aspect;
+      } else {
+        drawH = CUBE_SIZE;
+        drawW = CUBE_SIZE * aspect;
+      }
+
+      for (let y = 0; y < imgData.height; y += SAMPLE_STEP) {
+        for (let x = 0; x < imgData.width; x += SAMPLE_STEP) {
           const idx = (y * imgData.width + x) * 4;
-          const r = imgData.data[idx];
-          const g = imgData.data[idx + 1];
-          const b = imgData.data[idx + 2];
+          const r = imgData.data[idx] / 255;
+          const g = imgData.data[idx + 1] / 255;
+          const b = imgData.data[idx + 2] / 255;
           const a = imgData.data[idx + 3];
 
-          // PNG 透明背景可自动抠掉；JPG 因为本身不透明，会形成整张照片
-          if (a > 20) {
-            const px = (x / imgData.width - 0.5) * planeWidth;
-            const py = (0.5 - y / imgData.height) * planeHeight;
-            const pz = (Math.random() - 0.5) * 0.8;
+          // PNG 透明背景时，透明像素不参与
+          if (a < 20) continue;
 
-            candidates.push({
-              x: px,
-              y: py,
-              z: pz,
-              r: r / 255,
-              g: g / 255,
-              b: b / 255
-            });
-          }
+          const localX = (x / (imgData.width - 1) - 0.5) * drawW;
+          const localY = (0.5 - y / (imgData.height - 1)) * drawH;
+
+          // 前面
+          candidates.push({
+            x: localX,
+            y: localY,
+            z: half,
+            r, g, b
+          });
+
+          // 后面（镜像一下，外侧看方向更自然）
+          candidates.push({
+            x: -localX,
+            y: localY,
+            z: -half,
+            r, g, b
+          });
+
+          // 左面
+          candidates.push({
+            x: -half,
+            y: localY,
+            z: -localX,
+            r, g, b
+          });
+
+          // 右面
+          candidates.push({
+            x: half,
+            y: localY,
+            z: localX,
+            r, g, b
+          });
         }
       }
 
-      if (candidates.length === 0) {
+      return candidates;
+    }
+
+    // =========================
+    // 把候选点分配给粒子
+    // =========================
+    function fillTargetsFromCandidates(candidates) {
+      if (!candidates.length) {
         for (let i = 0; i < PARTICLE_COUNT; i++) {
           const i3 = i * 3;
           targetPositions[i3] = 0;
           targetPositions[i3 + 1] = 0;
           targetPositions[i3 + 2] = 0;
-
           targetColors[i3] = 1;
           targetColors[i3 + 1] = 1;
           targetColors[i3 + 2] = 1;
@@ -297,85 +313,19 @@
         return;
       }
 
+      // 为了分布更均匀，不是纯随机，而是按比例抽样
       for (let i = 0; i < PARTICLE_COUNT; i++) {
         const i3 = i * 3;
-        const p = candidates[Math.floor(Math.random() * candidates.length)];
+        const idx = Math.floor(i * candidates.length / PARTICLE_COUNT);
+        const p = candidates[idx];
 
-        targetPositions[i3]     = p.x;
+        targetPositions[i3] = p.x;
         targetPositions[i3 + 1] = p.y;
         targetPositions[i3 + 2] = p.z;
 
-        targetColors[i3]     = p.r;
+        targetColors[i3] = p.r;
         targetColors[i3 + 1] = p.g;
         targetColors[i3 + 2] = p.b;
-      }
-    }
-
-    function buildCubeTargets(imgData) {
-      const half = CUBE_SIZE / 2;
-
-      // 侧面颜色：淡粉白
-      const sideBase = { r: 1.0, g: 0.82, b: 0.92 };
-
-      for (let i = 0; i < PARTICLE_COUNT; i++) {
-        const i3 = i * 3;
-        const rnd = Math.random();
-
-        let x, y, z, c;
-
-        // 前面 32%，后面 32%，其余四个侧面各 9%
-        if (rnd < 0.32) {
-          // 前面：照片
-          x = (Math.random() - 0.5) * CUBE_SIZE;
-          y = (Math.random() - 0.5) * CUBE_SIZE;
-          z = half;
-
-          const u = (x + half) / CUBE_SIZE;
-          const v = 1 - (y + half) / CUBE_SIZE;
-          c = sampleColor(imgData, u, v);
-        } else if (rnd < 0.64) {
-          // 后面：照片
-          x = (Math.random() - 0.5) * CUBE_SIZE;
-          y = (Math.random() - 0.5) * CUBE_SIZE;
-          z = -half;
-
-          // 这里做个镜像，让背面朝外看时更自然
-          const u = 1 - (x + half) / CUBE_SIZE;
-          const v = 1 - (y + half) / CUBE_SIZE;
-          c = sampleColor(imgData, u, v);
-        } else if (rnd < 0.73) {
-          // 左面
-          x = -half;
-          y = (Math.random() - 0.5) * CUBE_SIZE;
-          z = (Math.random() - 0.5) * CUBE_SIZE;
-          c = sideBase;
-        } else if (rnd < 0.82) {
-          // 右面
-          x = half;
-          y = (Math.random() - 0.5) * CUBE_SIZE;
-          z = (Math.random() - 0.5) * CUBE_SIZE;
-          c = sideBase;
-        } else if (rnd < 0.91) {
-          // 上面
-          x = (Math.random() - 0.5) * CUBE_SIZE;
-          y = half;
-          z = (Math.random() - 0.5) * CUBE_SIZE;
-          c = sideBase;
-        } else {
-          // 下面
-          x = (Math.random() - 0.5) * CUBE_SIZE;
-          y = -half;
-          z = (Math.random() - 0.5) * CUBE_SIZE;
-          c = sideBase;
-        }
-
-        targetPositions[i3]     = x;
-        targetPositions[i3 + 1] = y;
-        targetPositions[i3 + 2] = z;
-
-        targetColors[i3]     = c.r;
-        targetColors[i3 + 1] = c.g;
-        targetColors[i3 + 2] = c.b;
       }
     }
 
@@ -383,12 +333,8 @@
       try {
         const img = await loadImage(IMAGE_PATH);
         const imgData = buildImageData(img);
-
-        if (SHAPE_MODE === "plane") {
-          buildPlaneTargets(imgData);
-        } else {
-          buildCubeTargets(imgData);
-        }
+        const candidates = buildCubeImageCandidates(imgData);
+        fillTargetsFromCandidates(candidates);
 
         ready = true;
         loadingEl.style.display = "none";
@@ -429,6 +375,9 @@
 
       gatherFactor += (targetGatherFactor - gatherFactor) * 0.06;
 
+      // 聚合时稍微把粒子缩小一点，图片更清楚
+      material.size = 0.44 - gatherFactor * 0.16;
+
       particles.rotation.y += ROTATE_SPEED_Y;
       particles.rotation.x += ROTATE_SPEED_X;
 
@@ -448,7 +397,7 @@
         const tz = randomPositions[i3 + 2] +
           (targetPositions[i3 + 2] - randomPositions[i3 + 2]) * gatherFactor;
 
-        posArray[i3]     += (tx - posArray[i3]) * 0.10;
+        posArray[i3] += (tx - posArray[i3]) * 0.10;
         posArray[i3 + 1] += (ty - posArray[i3 + 1]) * 0.10;
         posArray[i3 + 2] += (tz - posArray[i3 + 2]) * 0.10;
 
@@ -459,7 +408,7 @@
         const tb = scatterColors[i3 + 2] +
           (targetColors[i3 + 2] - scatterColors[i3 + 2]) * gatherFactor;
 
-        colorArray[i3]     += (tr - colorArray[i3]) * 0.12;
+        colorArray[i3] += (tr - colorArray[i3]) * 0.12;
         colorArray[i3 + 1] += (tg - colorArray[i3 + 1]) * 0.12;
         colorArray[i3 + 2] += (tb - colorArray[i3 + 2]) * 0.12;
       }
