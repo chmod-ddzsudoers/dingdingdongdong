@@ -70,7 +70,7 @@
     document.getElementById("canvas-container").appendChild(renderer.domElement);
 
     // 2. 创建中文双行粒子系统
-    const particleCount = 4000;
+    const particleCount = 6000;
     const geometry = new THREE.BufferGeometry();
 
     const positions = new Float32Array(particleCount * 3);
@@ -92,8 +92,8 @@
       ctx.textBaseline = "middle";
 
       // 中文字体优先
-      const fontSize = 120;
-      const lineHeight = 150;
+      const fontSize = 100;
+      const lineHeight = 120;
       ctx.font = `bold ${fontSize}px "Microsoft YaHei", "PingFang SC", "Noto Sans SC", sans-serif`;
 
       // 让多行文字整体在画布中垂直居中
@@ -146,7 +146,7 @@
 
     const material = new THREE.PointsMaterial({
       color: 0xff69b4,
-      size: 0.3,
+      size: 0.2,
       transparent: true,
       opacity: 0.86,
       blending: THREE.AdditiveBlending,
