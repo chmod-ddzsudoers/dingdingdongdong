@@ -3,101 +3,70 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>粒子聚合为六面图片立方体</title>
+  <title>WebGL 手势控制 DDZ 粒子</title>
   <style>
-    html, body {
-      margin: 0;
-      width: 100%;
-      height: 100%;
-      overflow: hidden;
-      background: #000;
-    }
-
     body {
-      cursor: pointer;
-      user-select: none;
-      -webkit-user-select: none;
-      touch-action: none;
-      font-family: Arial, "Microsoft YaHei", sans-serif;
+      margin: 0;
+      overflow: hidden;
+      background-color: #000;
     }
 
     #canvas-container {
-      position: fixed;
-      inset: 0;
       width: 100vw;
       height: 100vh;
+      position: absolute;
+      top: 0;
+      left: 0;
+      z-index: 1;
     }
 
-    #hint {
-      position: fixed;
-      top: 20px;
-      left: 50%;
-      transform: translateX(-50%);
-      z-index: 10;
-      color: rgba(255,255,255,0.92);
-      font-size: 15px;
-      letter-spacing: 1px;
-      text-align: center;
-      line-height: 1.8;
-      padding: 8px 14px;
-      border-radius: 999px;
-      background: rgba(255,255,255,0.08);
-      backdrop-filter: blur(6px);
-      pointer-events: none;
-      white-space: nowrap;
+    /* 隐藏摄像头视频流，只用于后台分析 */
+    .input_video {
+      display: none;
     }
 
     #loading {
-      position: fixed;
-      inset: 0;
-      z-index: 20;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: #fff;
-      font-size: 20px;
-      background: #000;
-      letter-spacing: 1px;
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      color: white;
+      font-family: sans-serif;
+      font-size: 24px;
+      text-align: center;
+      pointer-events: none;
+      z-index: 10;
+      line-height: 1.6;
     }
   </style>
 
+  <!-- Three.js -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+
+  <!-- MediaPipe Hands -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
 </head>
 <body>
-  <div id="loading">正在加载图片与粒子...</div>
-  <div id="hint">按下：聚合成立方体 ｜ 松开：散开为粒子</div>
+  <div id="loading">正在加载模型与摄像头...<br />请允许摄像头权限</div>
   <div id="canvas-container"></div>
+  <video class="input_video"></video>
 
   <script>
     // =========================
-    // 可调参数
+    // 1. Three.js 场景初始化
     // =========================
-    const IMAGE_PATH = "./ddz.jpg";   // 改成你的图片路径，比如 ./ddz.jpg
-    const PARTICLE_COUNT = 30000;     // 粒子总数，越大越清晰，但更吃性能
-    const SAMPLE_STEP = 1;            // 图片采样步长，1 最清晰，2 更省性能
-    const IMAGE_MAX_SIZE = 220;       // 采样图片内部尺寸
-    const CUBE_SIZE = 18;             // 立方体边长
-
-    // 现在只绕一个轴转：Y 轴
-    const ROTATE_SPEED_Y = 0.006;
-
-    const SCATTER_RANGE = { x: 130, y: 90, z: 70 };
-
-    // =========================
-    // 基础场景
-    // =========================
-    const container = document.getElementById("canvas-container");
-    const loadingEl = document.getElementById("loading");
-
     const scene = new THREE.Scene();
 
-    const camera = new THREE.PerspectiveCamera(
-      60,
+    const threeCamera = new THREE.PerspectiveCamera(
+      75,
       window.innerWidth / window.innerHeight,
       0.1,
       1000
     );
-    camera.position.z = 42;
+    threeCamera.position.z = 38;
 
     const renderer = new THREE.WebGLRenderer({
       antialias: true,
@@ -105,340 +74,218 @@
     });
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    container.appendChild(renderer.domElement);
+    document.getElementById("canvas-container").appendChild(renderer.domElement);
 
     // =========================
-    // 发光粒子贴图
+    // 2. 创建 DDZ 粒子系统
     // =========================
-    function createParticleSprite() {
-      const size = 128;
-      const canvas = document.createElement("canvas");
-      canvas.width = size;
-      canvas.height = size;
-      const ctx = canvas.getContext("2d");
-
-      const gradient = ctx.createRadialGradient(
-        size / 2, size / 2, 0,
-        size / 2, size / 2, size / 2
-      );
-      gradient.addColorStop(0.0, "rgba(255,255,255,1)");
-      gradient.addColorStop(0.18, "rgba(255,255,255,0.95)");
-      gradient.addColorStop(0.45, "rgba(255,255,255,0.58)");
-      gradient.addColorStop(1.0, "rgba(255,255,255,0)");
-
-      ctx.clearRect(0, 0, size, size);
-      ctx.fillStyle = gradient;
-      ctx.fillRect(0, 0, size, size);
-
-      const texture = new THREE.CanvasTexture(canvas);
-      texture.needsUpdate = true;
-      return texture;
-    }
-
-    const particleSprite = createParticleSprite();
-
-    // =========================
-    // 粒子数据
-    // =========================
+    const particleCount = 3000;
     const geometry = new THREE.BufferGeometry();
 
-    const positions = new Float32Array(PARTICLE_COUNT * 3);
-    const colors = new Float32Array(PARTICLE_COUNT * 3);
+    const positions = new Float32Array(particleCount * 3);
+    const targetPositions = new Float32Array(particleCount * 3);
+    const randomPositions = new Float32Array(particleCount * 3);
 
-    const randomPositions = new Float32Array(PARTICLE_COUNT * 3);
-    const targetPositions = new Float32Array(PARTICLE_COUNT * 3);
+    // 你以后只改这里，就能把 DDZ 换成别的字
+    const DISPLAY_TEXT = "“我爱你的下巴”“我爱你耳朵上的痣”";
 
-    const scatterColors = new Float32Array(PARTICLE_COUNT * 3);
-    const targetColors = new Float32Array(PARTICLE_COUNT * 3);
+    // 用隐藏 canvas 生成文字像素点
+    function getTextPoints(text) {
+      const canvas = document.createElement("canvas");
+      canvas.width = 1400;
+      canvas.height = 420;
 
-    for (let i = 0; i < PARTICLE_COUNT; i++) {
-      const i3 = i * 3;
+      const ctx = canvas.getContext("2d");
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      randomPositions[i3] = (Math.random() - 0.5) * SCATTER_RANGE.x;
-      randomPositions[i3 + 1] = (Math.random() - 0.5) * SCATTER_RANGE.y;
-      randomPositions[i3 + 2] = (Math.random() - 0.5) * SCATTER_RANGE.z;
+      ctx.fillStyle = "#ffffff";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.font = "bold 260px Arial Black, Arial, sans-serif";
+      ctx.fillText(text, canvas.width / 2, canvas.height / 2);
 
-      positions[i3] = randomPositions[i3];
-      positions[i3 + 1] = randomPositions[i3 + 1];
-      positions[i3 + 2] = randomPositions[i3 + 2];
+      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
+      const points = [];
 
-      // 散开时颜色：粉白
-      scatterColors[i3] = 1.0;
-      scatterColors[i3 + 1] = 0.58 + Math.random() * 0.18;
-      scatterColors[i3 + 2] = 0.78 + Math.random() * 0.18;
+      // 采样步长：越小越精细，点越多
+      const step = 3;
 
-      colors[i3] = scatterColors[i3];
-      colors[i3 + 1] = scatterColors[i3 + 1];
-      colors[i3 + 2] = scatterColors[i3 + 2];
+      for (let y = 0; y < canvas.height; y += step) {
+        for (let x = 0; x < canvas.width; x += step) {
+          const index = (y * canvas.width + x) * 4;
+          const alpha = imageData[index + 3];
+
+          if (alpha > 128) {
+            const px = (x - canvas.width / 2) * 0.045;
+            const py = (canvas.height / 2 - y) * 0.045;
+            points.push({ x: px, y: py });
+          }
+        }
+      }
+
+      return points;
+    }
+
+    const textPoints = getTextPoints(DISPLAY_TEXT);
+
+    // 把粒子目标点设为 DDZ 文字区域
+    for (let i = 0; i < particleCount; i++) {
+      const p = textPoints[Math.floor(Math.random() * textPoints.length)];
+
+      // 聚合后的目标位置（DDZ）
+      targetPositions[i * 3] = p.x;
+      targetPositions[i * 3 + 1] = p.y;
+      targetPositions[i * 3 + 2] = (Math.random() - 0.5) * 2.5; // 稍微给一点厚度
+
+      // 散开时的随机位置
+      randomPositions[i * 3] = (Math.random() - 0.5) * 100;
+      randomPositions[i * 3 + 1] = (Math.random() - 0.5) * 60;
+      randomPositions[i * 3 + 2] = (Math.random() - 0.5) * 50;
+
+      // 初始状态：散开
+      positions[i * 3] = randomPositions[i * 3];
+      positions[i * 3 + 1] = randomPositions[i * 3 + 1];
+      positions[i * 3 + 2] = randomPositions[i * 3 + 2];
     }
 
     geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-    geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
 
     const material = new THREE.PointsMaterial({
-      size: 0.30,
-      map: particleSprite,
+      color: 0xff69b4,
+      size: 0.4,
       transparent: true,
-      opacity: 0.96,
-      vertexColors: true,
-      depthWrite: false,
-      blending: THREE.NormalBlending
+      opacity: 0.85,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
     });
 
     const particles = new THREE.Points(geometry, material);
     scene.add(particles);
 
     // =========================
-    // 状态变量
+    // 3. 交互逻辑变量
     // =========================
-    let gatherFactor = 0;
-    let targetGatherFactor = 0;
-    let ready = false;
-
-    // =========================
-    // 加载图片
-    // =========================
-    function loadImage(src) {
-      return new Promise((resolve, reject) => {
-        const img = new Image();
-        img.onload = () => resolve(img);
-        img.onerror = reject;
-        img.src = src;
-      });
-    }
-
-    function buildImageData(img) {
-      const scale = Math.min(1, IMAGE_MAX_SIZE / img.width);
-      const canvas = document.createElement("canvas");
-      canvas.width = Math.max(1, Math.floor(img.width * scale));
-      canvas.height = Math.max(1, Math.floor(img.height * scale));
-
-      const ctx = canvas.getContext("2d");
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
-
-      const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      return {
-        width: canvas.width,
-        height: canvas.height,
-        data: imageData.data
-      };
-    }
+    let gatherFactor = 0;       // 0 = 完全散开, 1 = 完全聚合成 DDZ
+    let targetGatherFactor = 0; // 目标聚合度，由手势控制
 
     // =========================
-    // 构建六个侧面的图片粒子目标点
-    // 前 / 后 / 左 / 右 / 上 / 下 六面都是图片
+    // 4. MediaPipe Hands 配置
     // =========================
-    function buildCubeImageCandidates(imgData) {
-      const candidates = [];
-      const half = CUBE_SIZE / 2;
+    const videoElement = document.getElementsByClassName("input_video")[0];
+    const loadingEl = document.getElementById("loading");
 
-      const aspect = imgData.width / imgData.height;
-      let drawW, drawH;
+    function onResults(results) {
+      loadingEl.style.display = "none";
 
-      if (aspect >= 1) {
-        drawW = CUBE_SIZE;
-        drawH = CUBE_SIZE / aspect;
+      if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+        const landmarks = results.multiHandLandmarks[0];
+
+        // 计算手掌开合程度
+        // 用拇指和四指指尖到手腕的平均距离作为依据
+        const wrist = landmarks[0];
+        const fingerTips = [4, 8, 12, 16, 20];
+        let totalDist = 0;
+
+        fingerTips.forEach((idx) => {
+          const tip = landmarks[idx];
+          const dist = Math.sqrt(
+            Math.pow(tip.x - wrist.x, 2) +
+            Math.pow(tip.y - wrist.y, 2)
+          );
+          totalDist += dist;
+        });
+
+        const avgDist = totalDist / fingerTips.length;
+
+        // 阈值可按实际摄像头效果微调
+        const closeThreshold = 0.25;
+        const openThreshold = 0.5;
+
+        let normalized =
+          (avgDist - closeThreshold) / (openThreshold - closeThreshold);
+
+        normalized = 1 - Math.min(Math.max(normalized, 0), 1);
+
+        // 握拳 -> 聚合成 DDZ；张开 -> 散开
+        targetGatherFactor = normalized;
       } else {
-        drawH = CUBE_SIZE;
-        drawW = CUBE_SIZE * aspect;
-      }
-
-      for (let y = 0; y < imgData.height; y += SAMPLE_STEP) {
-        for (let x = 0; x < imgData.width; x += SAMPLE_STEP) {
-          const idx = (y * imgData.width + x) * 4;
-          const r = imgData.data[idx] / 255;
-          const g = imgData.data[idx + 1] / 255;
-          const b = imgData.data[idx + 2] / 255;
-          const a = imgData.data[idx + 3];
-
-          if (a < 20) continue;
-
-          // 图片在一个面上的局部坐标
-          const localX = (x / (imgData.width - 1) - 0.5) * drawW;
-          const localY = (0.5 - y / (imgData.height - 1)) * drawH;
-
-          // 前面  z = +half
-          candidates.push({
-            x: localX,
-            y: localY,
-            z: half,
-            r, g, b
-          });
-
-          // 后面  z = -half（镜像）
-          candidates.push({
-            x: -localX,
-            y: localY,
-            z: -half,
-            r, g, b
-          });
-
-          // 左面  x = -half
-          candidates.push({
-            x: -half,
-            y: localY,
-            z: -localX,
-            r, g, b
-          });
-
-          // 右面  x = +half
-          candidates.push({
-            x: half,
-            y: localY,
-            z: localX,
-            r, g, b
-          });
-
-          // 上面  y = +half
-          candidates.push({
-            x: localX,
-            y: half,
-            z: -localY,
-            r, g, b
-          });
-
-          // 下面  y = -half
-          candidates.push({
-            x: localX,
-            y: -half,
-            z: localY,
-            r, g, b
-          });
-        }
-      }
-
-      return candidates;
-    }
-
-    // =========================
-    // 把候选点分配给粒子
-    // =========================
-    function fillTargetsFromCandidates(candidates) {
-      if (!candidates.length) {
-        for (let i = 0; i < PARTICLE_COUNT; i++) {
-          const i3 = i * 3;
-          targetPositions[i3] = 0;
-          targetPositions[i3 + 1] = 0;
-          targetPositions[i3 + 2] = 0;
-          targetColors[i3] = 1;
-          targetColors[i3 + 1] = 1;
-          targetColors[i3 + 2] = 1;
-        }
-        return;
-      }
-
-      for (let i = 0; i < PARTICLE_COUNT; i++) {
-        const i3 = i * 3;
-        const idx = Math.floor(i * candidates.length / PARTICLE_COUNT);
-        const p = candidates[idx];
-
-        targetPositions[i3] = p.x;
-        targetPositions[i3 + 1] = p.y;
-        targetPositions[i3 + 2] = p.z;
-
-        targetColors[i3] = p.r;
-        targetColors[i3 + 1] = p.g;
-        targetColors[i3 + 2] = p.b;
+        // 没检测到手时，默认散开
+        targetGatherFactor = 0;
       }
     }
 
-    async function initTargets() {
-      try {
-        const img = await loadImage(IMAGE_PATH);
-        const imgData = buildImageData(img);
-        const candidates = buildCubeImageCandidates(imgData);
-        fillTargetsFromCandidates(candidates);
-
-        ready = true;
-        loadingEl.style.display = "none";
-        animate();
-      } catch (e) {
-        loadingEl.innerHTML = "图片加载失败，请检查路径：" + IMAGE_PATH;
-        console.error(e);
+    const hands = new Hands({
+      locateFile: (file) => {
+        return `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`;
       }
-    }
+    });
 
-    initTargets();
+    hands.setOptions({
+      maxNumHands: 1,
+      modelComplexity: 1,
+      minDetectionConfidence: 0.5,
+      minTrackingConfidence: 0.5
+    });
 
-    // =========================
-    // 按下聚合 / 松开散开
-    // =========================
-    function pressStart() {
-      targetGatherFactor = 1;
-    }
+    hands.onResults(onResults);
 
-    function pressEnd() {
-      targetGatherFactor = 0;
-    }
+    const mpCamera = new Camera(videoElement, {
+      onFrame: async () => {
+        await hands.send({ image: videoElement });
+      },
+      width: 640,
+      height: 480
+    });
 
-    window.addEventListener("mousedown", pressStart);
-    window.addEventListener("mouseup", pressEnd);
-    window.addEventListener("mouseleave", pressEnd);
-
-    window.addEventListener("touchstart", pressStart, { passive: true });
-    window.addEventListener("touchend", pressEnd, { passive: true });
-    window.addEventListener("touchcancel", pressEnd, { passive: true });
+    mpCamera.start();
 
     // =========================
-    // 动画
+    // 5. 动画循环
     // =========================
     function animate() {
       requestAnimationFrame(animate);
-      if (!ready) return;
 
-      gatherFactor += (targetGatherFactor - gatherFactor) * 0.06;
+      // 轻微旋转，让粒子更灵动
+      particles.rotation.y += 0.002;
 
-      // 聚合时粒子更小，画面更清楚
-      material.size = 0.34 - gatherFactor * 0.16;
+      // 平滑过渡聚合系数
+      gatherFactor += (targetGatherFactor - gatherFactor) * 0.05;
 
-      // 只绕 Y 轴旋转
-      particles.rotation.y += ROTATE_SPEED_Y;
+      const posAttr = particles.geometry.attributes.position;
+      const currentPositions = posAttr.array;
 
-      const posAttr = geometry.attributes.position;
-      const colorAttr = geometry.attributes.color;
+      for (let i = 0; i < particleCount; i++) {
+        const idx = i * 3;
 
-      const posArray = posAttr.array;
-      const colorArray = colorAttr.array;
+        // 在随机散开位置 与 DDZ 目标位置之间插值
+        const tx =
+          randomPositions[idx] +
+          (targetPositions[idx] - randomPositions[idx]) * gatherFactor;
+        const ty =
+          randomPositions[idx + 1] +
+          (targetPositions[idx + 1] - randomPositions[idx + 1]) * gatherFactor;
+        const tz =
+          randomPositions[idx + 2] +
+          (targetPositions[idx + 2] - randomPositions[idx + 2]) * gatherFactor;
 
-      for (let i = 0; i < PARTICLE_COUNT; i++) {
-        const i3 = i * 3;
-
-        const tx = randomPositions[i3] +
-          (targetPositions[i3] - randomPositions[i3]) * gatherFactor;
-        const ty = randomPositions[i3 + 1] +
-          (targetPositions[i3 + 1] - randomPositions[i3 + 1]) * gatherFactor;
-        const tz = randomPositions[i3 + 2] +
-          (targetPositions[i3 + 2] - randomPositions[i3 + 2]) * gatherFactor;
-
-        posArray[i3] += (tx - posArray[i3]) * 0.10;
-        posArray[i3 + 1] += (ty - posArray[i3 + 1]) * 0.10;
-        posArray[i3 + 2] += (tz - posArray[i3 + 2]) * 0.10;
-
-        const tr = scatterColors[i3] +
-          (targetColors[i3] - scatterColors[i3]) * gatherFactor;
-        const tg = scatterColors[i3 + 1] +
-          (targetColors[i3 + 1] - scatterColors[i3 + 1]) * gatherFactor;
-        const tb = scatterColors[i3 + 2] +
-          (targetColors[i3 + 2] - scatterColors[i3 + 2]) * gatherFactor;
-
-        colorArray[i3] += (tr - colorArray[i3]) * 0.12;
-        colorArray[i3 + 1] += (tg - colorArray[i3 + 1]) * 0.12;
-        colorArray[i3 + 2] += (tb - colorArray[i3 + 2]) * 0.12;
+        // 平滑移动
+        currentPositions[idx] += (tx - currentPositions[idx]) * 0.1;
+        currentPositions[idx + 1] += (ty - currentPositions[idx + 1]) * 0.1;
+        currentPositions[idx + 2] += (tz - currentPositions[idx + 2]) * 0.1;
       }
 
       posAttr.needsUpdate = true;
-      colorAttr.needsUpdate = true;
-
-      renderer.render(scene, camera);
+      renderer.render(scene, threeCamera);
     }
 
+    animate();
+
     // =========================
-    // 自适应
+    // 6. 窗口大小自适应
     // =========================
     window.addEventListener("resize", () => {
-      camera.aspect = window.innerWidth / window.innerHeight;
-      camera.updateProjectionMatrix();
+      threeCamera.aspect = window.innerWidth / window.innerHeight;
+      threeCamera.updateProjectionMatrix();
       renderer.setSize(window.innerWidth, window.innerHeight);
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     });
