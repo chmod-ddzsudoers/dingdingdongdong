@@ -69,33 +69,44 @@
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     document.getElementById("canvas-container").appendChild(renderer.domElement);
 
-    // 2. 创建 DDZ 粒子系统
-    const particleCount = 3000;
+    // 2. 创建中文双行粒子系统
+    const particleCount = 6000;
     const geometry = new THREE.BufferGeometry();
 
     const positions = new Float32Array(particleCount * 3);
     const targetPositions = new Float32Array(particleCount * 3);
     const randomPositions = new Float32Array(particleCount * 3);
 
-    const DISPLAY_TEXT = "“我爱你的下巴”
-                        “我爱你耳朵上的痣”";
+    // 所显示的中文 
+    const DISPLAY_LINES = ["我爱你的下巴", "我爱你耳朵上的痣"];
 
-    function getTextPoints(text) {
+    function getTextPoints(lines) {
       const canvas = document.createElement("canvas");
-      canvas.width = 1400;
-      canvas.height = 420;
+      canvas.width = 1600;
+      canvas.height = 900;
       const ctx = canvas.getContext("2d");
 
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.fillStyle = "#ffffff";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.font = "bold 260px Arial Black, Arial, sans-serif";
-      ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+
+      // 中文字体优先
+      const fontSize = 220;
+      const lineHeight = 260;
+      ctx.font = `bold ${fontSize}px "Microsoft YaHei", "PingFang SC", "Noto Sans SC", sans-serif`;
+
+      // 让多行文字整体在画布中垂直居中
+      const totalHeight = (lines.length - 1) * lineHeight;
+      const startY = canvas.height / 2 - totalHeight / 2;
+
+      lines.forEach((line, i) => {
+        ctx.fillText(line, canvas.width / 2, startY + i * lineHeight);
+      });
 
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
       const points = [];
-      const step = 3;
+      const step = 2;
 
       for (let y = 0; y < canvas.height; y += step) {
         for (let x = 0; x < canvas.width; x += step) {
@@ -103,8 +114,8 @@
           const alpha = imageData[index + 3];
 
           if (alpha > 128) {
-            const px = (x - canvas.width / 2) * 0.045;
-            const py = (canvas.height / 2 - y) * 0.045;
+            const px = (x - canvas.width / 2) * 0.04;
+            const py = (canvas.height / 2 - y) * 0.04;
             points.push({ x: px, y: py });
           }
         }
@@ -113,7 +124,7 @@
       return points;
     }
 
-    const textPoints = getTextPoints(DISPLAY_TEXT);
+    const textPoints = getTextPoints(DISPLAY_LINES);
 
     for (let i = 0; i < particleCount; i++) {
       const p = textPoints[Math.floor(Math.random() * textPoints.length)];
@@ -169,7 +180,7 @@
     function animate() {
       requestAnimationFrame(animate);
 
-      // 原来是 0.002，这里加快
+      // 沿单一轴旋转，避免太乱
       particles.rotation.y += 0.008;
 
       gatherFactor += (targetGatherFactor - gatherFactor) * 0.05;
