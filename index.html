@@ -1,56 +1,104 @@
 <!DOCTYPE html>
-<html lang="zh">
+<html lang="zh-CN">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>dingdonglove</title>
   <style>
-    body {
+    * { box-sizing: border-box; }
+
+    html, body {
       margin: 0;
+      width: 100%;
+      height: 100%;
       overflow: hidden;
       background: #000;
-      cursor: pointer;
+      font-family: "Microsoft YaHei", "PingFang SC", "Noto Sans SC", sans-serif;
       user-select: none;
       -webkit-user-select: none;
       touch-action: manipulation;
+      cursor: pointer;
     }
 
     #canvas-container {
+      position: fixed;
+      inset: 0;
       width: 100vw;
       height: 100vh;
-      position: absolute;
-      inset: 0;
-      z-index: 1;
     }
 
     #hint {
-      position: absolute;
-      top: 24px;
+      position: fixed;
+      top: 20px;
       left: 50%;
       transform: translateX(-50%);
-      color: rgba(255,255,255,0.9);
-      font-family: Arial, "Microsoft YaHei", sans-serif;
-      font-size: 16px;
-      letter-spacing: 1px;
       z-index: 10;
-      pointer-events: none;
-      text-align: center;
-      line-height: 1.8;
+      color: rgba(255,255,255,0.88);
+      font-size: 14px;
+      letter-spacing: 1px;
       padding: 8px 14px;
       border-radius: 999px;
       background: rgba(255,255,255,0.08);
       backdrop-filter: blur(6px);
+      pointer-events: none;
+      white-space: nowrap;
+    }
+
+    #status {
+      position: fixed;
+      bottom: 18px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 10;
+      color: rgba(255,255,255,0.4);
+      font-size: 12px;
+      letter-spacing: 0.5px;
+      pointer-events: none;
+      text-align: center;
+      min-width: 180px;
     }
   </style>
 
   <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 </head>
 <body>
-  <div id="hint">按下屏幕：聚合 ｜ 松开：散开</div>
+  <div id="hint">按下：随机换字并聚合　|　松开：散开</div>
+  <div id="status">正在加载文案…</div>
   <div id="canvas-container"></div>
 
   <script>
-    // 1. Three.js 场景初始化
+    // =========================
+    // 可调参数
+    // =========================
+    const CONFIG = {
+      particleCount: 5000,     // 粒子数量，越大越清楚，越吃性能
+      sampleStep: 2,           // 文字采样步长，越小越密，越清楚
+      pointSize: 0.2,         // 单个粒子大小
+      pointOpacity: 0.86,      // 粒子透明度
+      rotationSpeed: 0.006,    // 整体旋转速度
+      gatherEase: 0.05,        // 聚合进度缓动
+      moveEase: 0.10,          // 每个粒子移动缓动
+      randomRangeX: 100,
+      randomRangeY: 60,
+      randomRangeZ: 50,
+      textScale: 0.04,         // 文字坐标缩放
+      canvasWidth: 1600,
+      canvasHeight: 900
+    };
+
+    // =========================
+    // 基础 DOM
+    // =========================
+    const container = document.getElementById("canvas-container");
+    const statusEl = document.getElementById("status");
+
+    function setStatus(text) {
+      statusEl.textContent = text;
+    }
+
+    // =========================
+    // Three.js 初始化
+    // =========================
     const scene = new THREE.Scene();
 
     const camera = new THREE.PerspectiveCamera(
@@ -67,46 +115,137 @@
     });
     renderer.setSize(window.innerWidth, window.innerHeight);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    document.getElementById("canvas-container").appendChild(renderer.domElement);
+    container.appendChild(renderer.domElement);
 
-    // 2. 创建中文双行粒子系统
-    const particleCount = 6000;
+    // =========================
+    // 粒子数据
+    // =========================
+    const particleCount = CONFIG.particleCount;
     const geometry = new THREE.BufferGeometry();
 
     const positions = new Float32Array(particleCount * 3);
     const targetPositions = new Float32Array(particleCount * 3);
     const randomPositions = new Float32Array(particleCount * 3);
 
-    // 所显示的中文 
-    const DISPLAY_LINES = ["我爱你的下巴", "我爱你耳朵上的痣"];
+    const material = new THREE.PointsMaterial({
+      color: 0xff69b4,
+      size: CONFIG.pointSize,
+      transparent: true,
+      opacity: CONFIG.pointOpacity,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
+    });
+
+    const particles = new THREE.Points(geometry, material);
+    scene.add(particles);
+
+    // =========================
+    // 文案数据
+    // =========================
+    let TEXT_GROUPS = [];
+    let currentGroupIndex = -1;
+    let isAppStarted = false;
+
+    async function loadTextGroups() {
+      try {
+        const response = await fetch("./texts.json");
+
+        if (!response.ok) {
+          throw new Error(`加载 texts.json 失败：${response.status}`);
+        }
+
+        const data = await response.json();
+
+        const validGroups = data
+          .filter(group => Array.isArray(group))
+          .map(group =>
+            group
+              .filter(line => typeof line === "string")
+              .map(line => line.trim())
+              .filter(line => line.length > 0)
+          )
+          .filter(group => group.length > 0);
+
+        if (validGroups.length === 0) {
+          throw new Error("texts.json 中没有可用文案");
+        }
+
+        TEXT_GROUPS = validGroups;
+        setStatus(`已加载 ${TEXT_GROUPS.length} 组文案`);
+      } catch (error) {
+        console.error(error);
+
+        TEXT_GROUPS = [
+          ["加载失败"],
+          ["请检查", "texts.json"],
+          ["文案文件未找到", "或格式不正确"]
+        ];
+
+        setStatus("文案加载失败，已使用兜底文案");
+      }
+    }
+
+    function getRandomTextGroup() {
+      if (TEXT_GROUPS.length === 0) return ["暂无文案"];
+      if (TEXT_GROUPS.length === 1) return TEXT_GROUPS[0];
+
+      let nextIndex;
+      do {
+        nextIndex = Math.floor(Math.random() * TEXT_GROUPS.length);
+      } while (nextIndex === currentGroupIndex);
+
+      currentGroupIndex = nextIndex;
+      return TEXT_GROUPS[nextIndex];
+    }
+
+    // =========================
+    // 文字转粒子点
+    // =========================
+    function getLayoutForLines(lineCount) {
+      // 1/2/3 行分别优化；超过 3 行也会继续缩小并整体居中
+      if (lineCount <= 1) {
+        return { fontSize: 170, lineHeight: 200 };
+      }
+      if (lineCount === 2) {
+        return { fontSize: 145, lineHeight: 175 };
+      }
+      if (lineCount === 3) {
+        return { fontSize: 115, lineHeight: 140 };
+      }
+
+      // 4 行及以上，继续缩小
+      const fontSize = Math.max(70, 115 - (lineCount - 3) * 10);
+      const lineHeight = Math.max(95, 140 - (lineCount - 3) * 8);
+      return { fontSize, lineHeight };
+    }
 
     function getTextPoints(lines) {
       const canvas = document.createElement("canvas");
-      canvas.width = 1600;
-      canvas.height = 900;
-      const ctx = canvas.getContext("2d");
+      canvas.width = CONFIG.canvasWidth;
+      canvas.height = CONFIG.canvasHeight;
 
+      const ctx = canvas.getContext("2d");
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.fillStyle = "#ffffff";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
 
-      // 中文字体优先
-      const fontSize = 100;
-      const lineHeight = 120;
+      const { fontSize, lineHeight } = getLayoutForLines(lines.length);
+
       ctx.font = `bold ${fontSize}px "Microsoft YaHei", "PingFang SC", "Noto Sans SC", sans-serif`;
 
-      // 让多行文字整体在画布中垂直居中
+      // 把所有行当作一个整体做垂直居中
       const totalHeight = (lines.length - 1) * lineHeight;
       const startY = canvas.height / 2 - totalHeight / 2;
 
       lines.forEach((line, i) => {
-        ctx.fillText(line, canvas.width / 2, startY + i * lineHeight);
+        const y = startY + i * lineHeight;
+        ctx.fillText(line, canvas.width / 2, y);
       });
 
       const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height).data;
       const points = [];
-      const step = 2;
+      const step = CONFIG.sampleStep;
 
       for (let y = 0; y < canvas.height; y += step) {
         for (let x = 0; x < canvas.width; x += step) {
@@ -114,8 +253,8 @@
           const alpha = imageData[index + 3];
 
           if (alpha > 128) {
-            const px = (x - canvas.width / 2) * 0.04;
-            const py = (canvas.height / 2 - y) * 0.04;
+            const px = (x - canvas.width / 2) * CONFIG.textScale;
+            const py = (canvas.height / 2 - y) * CONFIG.textScale;
             points.push({ x: px, y: py });
           }
         }
@@ -124,47 +263,67 @@
       return points;
     }
 
-    const textPoints = getTextPoints(DISPLAY_LINES);
+    function updateTargetText(lines) {
+      const textPoints = getTextPoints(lines);
 
-    for (let i = 0; i < particleCount; i++) {
-      const p = textPoints[Math.floor(Math.random() * textPoints.length)];
+      if (!textPoints.length) return;
 
-      targetPositions[i * 3] = p.x;
-      targetPositions[i * 3 + 1] = p.y;
-      targetPositions[i * 3 + 2] = (Math.random() - 0.5) * 0.4;
+      for (let i = 0; i < particleCount; i++) {
+        const p = textPoints[Math.floor(Math.random() * textPoints.length)];
+        const idx = i * 3;
 
-      randomPositions[i * 3] = (Math.random() - 0.5) * 100;
-      randomPositions[i * 3 + 1] = (Math.random() - 0.5) * 60;
-      randomPositions[i * 3 + 2] = (Math.random() - 0.5) * 50;
-
-      positions[i * 3] = randomPositions[i * 3];
-      positions[i * 3 + 1] = randomPositions[i * 3 + 1];
-      positions[i * 3 + 2] = randomPositions[i * 3 + 2];
+        targetPositions[idx] = p.x;
+        targetPositions[idx + 1] = p.y;
+        targetPositions[idx + 2] = 0; // 聚合时不发散，字更清楚
+      }
     }
 
-    geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+    function initParticles() {
+      const initialLines = getRandomTextGroup();
+      const initialPoints = getTextPoints(initialLines);
 
-    const material = new THREE.PointsMaterial({
-      color: 0xff69b4,
-      size: 0.2,
-      transparent: true,
-      opacity: 0.86,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false
-    });
+      for (let i = 0; i < particleCount; i++) {
+        const idx = i * 3;
+        const p = initialPoints[Math.floor(Math.random() * initialPoints.length)];
 
-    const particles = new THREE.Points(geometry, material);
-    scene.add(particles);
+        targetPositions[idx] = p.x;
+        targetPositions[idx + 1] = p.y;
+        targetPositions[idx + 2] = 0;
 
-    // 3. 按下聚合 / 松开散开
+        randomPositions[idx] = (Math.random() - 0.5) * CONFIG.randomRangeX;
+        randomPositions[idx + 1] = (Math.random() - 0.5) * CONFIG.randomRangeY;
+        randomPositions[idx + 2] = (Math.random() - 0.5) * CONFIG.randomRangeZ;
+
+        positions[idx] = randomPositions[idx];
+        positions[idx + 1] = randomPositions[idx + 1];
+        positions[idx + 2] = randomPositions[idx + 2];
+      }
+
+      geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+    }
+
+    // =========================
+    // 交互逻辑
+    // =========================
     let gatherFactor = 0;
     let targetGatherFactor = 0;
+    let isPressing = false;
 
     function pressStart() {
+      if (!isAppStarted) return;
+
+      if (!isPressing) {
+        isPressing = true;
+        const nextLines = getRandomTextGroup();
+        updateTargetText(nextLines);
+      }
+
       targetGatherFactor = 1;
     }
 
     function pressEnd() {
+      if (!isAppStarted) return;
+      isPressing = false;
       targetGatherFactor = 0;
     }
 
@@ -176,49 +335,56 @@
     window.addEventListener("touchend", pressEnd, { passive: true });
     window.addEventListener("touchcancel", pressEnd, { passive: true });
 
-    // 4. 动画循环
+    // =========================
+    // 动画
+    // =========================
     function animate() {
       requestAnimationFrame(animate);
 
-      // 沿单一轴旋转，避免太乱
-      particles.rotation.y += 0.007;
+      particles.rotation.y += CONFIG.rotationSpeed;
 
-      gatherFactor += (targetGatherFactor - gatherFactor) * 0.05;
+      gatherFactor += (targetGatherFactor - gatherFactor) * CONFIG.gatherEase;
 
       const posAttr = particles.geometry.attributes.position;
-      const currentPositions = posAttr.array;
+      const arr = posAttr.array;
 
       for (let i = 0; i < particleCount; i++) {
         const idx = i * 3;
 
-        const tx =
-          randomPositions[idx] +
-          (targetPositions[idx] - randomPositions[idx]) * gatherFactor;
-        const ty =
-          randomPositions[idx + 1] +
-          (targetPositions[idx + 1] - randomPositions[idx + 1]) * gatherFactor;
-        const tz =
-          randomPositions[idx + 2] +
-          (targetPositions[idx + 2] - randomPositions[idx + 2]) * gatherFactor;
+        const tx = randomPositions[idx] + (targetPositions[idx] - randomPositions[idx]) * gatherFactor;
+        const ty = randomPositions[idx + 1] + (targetPositions[idx + 1] - randomPositions[idx + 1]) * gatherFactor;
+        const tz = randomPositions[idx + 2] + (targetPositions[idx + 2] - randomPositions[idx + 2]) * gatherFactor;
 
-        currentPositions[idx] += (tx - currentPositions[idx]) * 0.1;
-        currentPositions[idx + 1] += (ty - currentPositions[idx + 1]) * 0.1;
-        currentPositions[idx + 2] += (tz - currentPositions[idx + 2]) * 0.1;
+        arr[idx] += (tx - arr[idx]) * CONFIG.moveEase;
+        arr[idx + 1] += (ty - arr[idx + 1]) * CONFIG.moveEase;
+        arr[idx + 2] += (tz - arr[idx + 2]) * CONFIG.moveEase;
       }
 
       posAttr.needsUpdate = true;
       renderer.render(scene, camera);
     }
 
-    animate();
-
-    // 5. 自适应窗口
+    // =========================
+    // 自适应
+    // =========================
     window.addEventListener("resize", () => {
       camera.aspect = window.innerWidth / window.innerHeight;
       camera.updateProjectionMatrix();
       renderer.setSize(window.innerWidth, window.innerHeight);
       renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     });
+
+    // =========================
+    // 启动
+    // =========================
+    async function startApp() {
+      await loadTextGroups();
+      initParticles();
+      isAppStarted = true;
+      animate();
+    }
+
+    startApp();
   </script>
 </body>
 </html>
