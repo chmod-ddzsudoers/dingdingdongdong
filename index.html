@@ -204,13 +204,13 @@
     function getLayoutForLines(lineCount) {
       // 1/2/3 行分别优化；超过 3 行也会继续缩小并整体居中
       if (lineCount <= 1) {
-        return { fontSize: 100, lineHeight: 120 };
+        return { fontSize: 90, lineHeight: 100 };
       }
       if (lineCount === 2) {
-        return { fontSize: 100, lineHeight: 120 };
+        return { fontSize: 90, lineHeight: 100 };
       }
       if (lineCount === 3) {
-        return { fontSize: 100, lineHeight: 120 };
+        return { fontSize: 90, lineHeight: 100 };
       }
 
       // 4 行及以上，继续缩小
@@ -345,7 +345,7 @@
     
       const time = performance.now() * 0.001;
       
-      particles.rotation.y = Math.sin(time * 1.0) * 0.80;
+      particles.rotation.y = Math.sin(time * 1.3) * 0.80;
       particles.rotation.x = Math.sin(time * 0.5) * 0.08;
 
       gatherFactor += (targetGatherFactor - gatherFactor) * CONFIG.gatherEase;
